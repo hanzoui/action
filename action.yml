@@ -64,35 +64,13 @@ inputs:
     description: "Skip quickci."
     required: false
     default: "true"
-  # New parameters for local testing
-  skip_cloud:
-    description: "Skip cloud operations (GCS uploads and API calls)"
-    required: false
-    default: "false"
-  local_comfyui_path:
-    description: "Path to a local ComfyUI repository"
-    required: false
-    default: ""
-  local_output_dir:
-    description: "Directory to save output files when skip_cloud is true"
-    required: false
-    default: "./ci_output"
 runs:
   using: "composite"
   steps:
     - name: '[Universal] Checkout'
       uses: actions/checkout@v4
-      if: ${{ inputs.local_comfyui_path == '' }}
       with:
         fetch-depth: 2
-
-    - name: '[Universal] Copy from Local Path'
-      if: ${{ inputs.local_comfyui_path != '' }}
-      shell: bash
-      run: |
-        mkdir -p $GITHUB_WORKSPACE
-        cp -r ${{ inputs.local_comfyui_path }}/* $GITHUB_WORKSPACE/
-        echo "Using local ComfyUI path: ${{ inputs.local_comfyui_path }}"
 
     ############################################################
     ##                      Mac/Linux Steps                   ##
@@ -117,7 +95,7 @@ runs:
     ############################################################
     - name: '[Unix] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud != 'true' }}
+      if: ${{ inputs.os != 'windows' }}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
@@ -229,13 +207,6 @@ runs:
         python poll_server_start.py > application.log 2>&1
       shell: bash -el {0}
 
-    - name: '[Unix] Create local output directory'
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud == 'true' }}
-      shell: bash -el {0}
-      run: |
-        mkdir -p ${{ inputs.local_output_dir }}
-        echo "Created local output directory: ${{ inputs.local_output_dir }}"
-
     - name: '[Unix] Get Details and Run Python Action'
       id: unix_action
       if: ${{ inputs.os != 'windows' }}
@@ -282,27 +253,17 @@ runs:
           --commit-time "$TIMESTAMP" \
           --commit-message "$MESSAGE" \
           --branch-name "$BRANCH_NAME" \
-          --api-endpoint "${{ inputs.api_endpoint }}" \
-          --skip-cloud "${{ inputs.skip_cloud }}" \
-          --local-output-dir "${{ inputs.local_output_dir }}" \
-          --local-comfyui-path "${{ inputs.local_comfyui_path }}"
-
-    - name: '[Unix] Copy outputs to local directory'
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud == 'true' && ( success() || failure() ) }}
-      shell: bash -el {0}
-      run: |
-        cp -r ${{ github.workspace }}/output/* ${{ inputs.local_output_dir }}/
-        echo "Output files copied to ${{ inputs.local_output_dir }}"
+          --api-endpoint "${{ inputs.api_endpoint }}"
 
     - name: '[Unix] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() ) }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
 
     - name: '[Unix] Upload log file to GCS'
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() ) }}
       id: unix_upload-log-files
       uses: google-github-actions/upload-cloud-storage@v2
       with:
@@ -347,7 +308,7 @@ runs:
 
     - name: '[Win] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os == 'windows' && inputs.skip_cloud != 'true' }}
+      if: ${{ inputs.os == 'windows' }}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
@@ -436,13 +397,6 @@ runs:
         Write-Output "(Temporary) fixing torch nightly bug"
         python $Env:GITHUB_WORKSPACE/fix_torch.py
 
-    - name: '[Win] Create local output directory'
-      if: ${{ inputs.os == 'windows' && inputs.skip_cloud == 'true' }}
-      shell: powershell
-      run: |
-        New-Item -ItemType Directory -Force -Path ${{ inputs.local_output_dir }}
-        Write-Output "Created local output directory: ${{ inputs.local_output_dir }}"
-
     - name: '[Win] Run ComfyUI'
       if: ${{ inputs.os == 'windows' }}
       shell: powershell
@@ -511,29 +465,20 @@ runs:
           --commit-time "$timestamp" `
           --commit-message $message `
           --branch-name $branch_name `
-          --api-endpoint "${{ inputs.api_endpoint }}" `
-          --skip-cloud "${{ inputs.skip_cloud }}" `
-          --local-output-dir "${{ inputs.local_output_dir }}" `
-          --local-comfyui-path "${{ inputs.local_comfyui_path }}"
+          --api-endpoint "${{ inputs.api_endpoint }}"
         (Get-ChildItem -Force -Path "${{ github.workspace }}/output").FullName
         cat "${{ github.workspace }}/application.log"
-
-    - name: '[Win] Copy outputs to local directory'
-      if: ${{ inputs.os == 'windows' && inputs.skip_cloud == 'true' && ( success() || failure() ) }}
-      shell: powershell
-      run: |
-        Copy-Item -Path "${{ github.workspace }}/output/*" -Destination "${{ inputs.local_output_dir }}/" -Recurse -Force
-        Write-Output "Output files copied to ${{ inputs.local_output_dir }}"
+    # Note the Get-ChildItem mess is powershell for "ls -la" for debug
 
     - name: '[Win] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os == 'windows' && inputs.skip_cloud != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os == 'windows' && ( success() || failure() ) }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
 
     - name: '[Win] Upload log file to GCS'
-      if: ${{ ( success() || failure() ) && inputs.os == 'windows' && inputs.skip_cloud != 'true' }}
+      if: ${{ ( success() || failure() ) && inputs.os == 'windows'}}
       id: win_upload-log-files
       uses: google-github-actions/upload-cloud-storage@v2
       with:
