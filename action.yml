@@ -117,7 +117,7 @@ runs:
     ############################################################
     - name: '[Unix] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud != 'true' }}
+      if: ${{ inputs.os != 'windows' && (inputs.skip_cloud != 'true' && vars.skip_cloud != 'true') }}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
@@ -230,11 +230,11 @@ runs:
       shell: bash -el {0}
 
     - name: '[Unix] Create local output directory'
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud == 'true' }}
+      if: ${{ inputs.os != 'windows' && (inputs.skip_cloud == 'true' || vars.skip_cloud == 'true') }}
       shell: bash -el {0}
       run: |
-        mkdir -p ${{ inputs.local_output_dir }}
-        echo "Created local output directory: ${{ inputs.local_output_dir }}"
+        mkdir -p ${{ inputs.local_output_dir || './ci_output' }}
+        echo "Created local output directory: ${{ inputs.local_output_dir || './ci_output' }}"
 
     - name: '[Unix] Get Details and Run Python Action'
       id: unix_action
@@ -261,8 +261,26 @@ runs:
         TIMESTAMP=$(git show -s --format=%cI $COMMIT_HASH)
         MESSAGE=$(git show -s --format=%s $COMMIT_HASH)
 
+        # Determine skip_cloud value (inputs take precedence over vars)
+        SKIP_CLOUD="${{ inputs.skip_cloud }}"
+        if [ "$SKIP_CLOUD" != "true" ]; then
+          SKIP_CLOUD="${{ vars.skip_cloud }}"
+        fi
+        
+        # Determine local_output_dir
+        LOCAL_OUTPUT_DIR="${{ inputs.local_output_dir }}"
+        if [ -z "$LOCAL_OUTPUT_DIR" ]; then
+          LOCAL_OUTPUT_DIR="./ci_output"
+        fi
+        
+        # Ensure the output directory exists
+        mkdir -p $LOCAL_OUTPUT_DIR
+
         cd ${{ github.action_path }}
         echo "Running workflows: ${{ inputs.workflow_filenames }}"
+        echo "Skip cloud operations: $SKIP_CLOUD"
+        echo "Local output directory: $LOCAL_OUTPUT_DIR"
+        
         python action.py \
           --comfy-workflow-names ${{ inputs.workflow_filenames }} \
           --github-action-workflow-name "${{ github.workflow }}" \
@@ -283,9 +301,9 @@ runs:
           --commit-message "$MESSAGE" \
           --branch-name "$BRANCH_NAME" \
           --api-endpoint "${{ inputs.api_endpoint }}" \
-          --skip-cloud "${{ inputs.skip_cloud }}" \
-          --local-output-dir "${{ inputs.local_output_dir }}" \
-          --local-comfyui-path "${{ inputs.local_comfyui_path }}"
+          --skip-cloud "$SKIP_CLOUD" \
+          --local-output-dir "$LOCAL_OUTPUT_DIR" \
+          --local-comfyui-path "${{ inputs.local_comfyui_path || '.' }}"
 
     - name: '[Unix] Copy outputs to local directory'
       if: ${{ inputs.os != 'windows' && inputs.skip_cloud == 'true' && ( success() || failure() ) }}
@@ -296,13 +314,13 @@ runs:
 
     - name: '[Unix] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && (inputs.skip_cloud != 'true' && vars.skip_cloud != 'true') && ( success() || failure() ) }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
 
     - name: '[Unix] Upload log file to GCS'
-      if: ${{ inputs.os != 'windows' && inputs.skip_cloud != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && (inputs.skip_cloud != 'true' && vars.skip_cloud != 'true') && ( success() || failure() ) }}
       id: unix_upload-log-files
       uses: google-github-actions/upload-cloud-storage@v2
       with:
@@ -347,7 +365,7 @@ runs:
 
     - name: '[Win] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os == 'windows' && inputs.skip_cloud != 'true' }}
+      if: ${{ inputs.os == 'windows' && (inputs.skip_cloud != 'true' && vars.skip_cloud != 'true') }}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
@@ -437,11 +455,11 @@ runs:
         python $Env:GITHUB_WORKSPACE/fix_torch.py
 
     - name: '[Win] Create local output directory'
-      if: ${{ inputs.os == 'windows' && inputs.skip_cloud == 'true' }}
+      if: ${{ inputs.os == 'windows' && (inputs.skip_cloud == 'true' || vars.skip_cloud == 'true') }}
       shell: powershell
       run: |
-        New-Item -ItemType Directory -Force -Path ${{ inputs.local_output_dir }}
-        Write-Output "Created local output directory: ${{ inputs.local_output_dir }}"
+        New-Item -ItemType Directory -Force -Path "${{ inputs.local_output_dir || './ci_output' }}"
+        Write-Output "Created local output directory: ${{ inputs.local_output_dir || './ci_output' }}"
 
     - name: '[Win] Run ComfyUI'
       if: ${{ inputs.os == 'windows' }}
@@ -488,10 +506,31 @@ runs:
         $message = $message -replace '"', '\"'
         $actor = "${{ github.actor }}"
         $actor = $actor -replace '"', '\"'
+        
+        # Determine skip_cloud value (inputs take precedence over vars)
+        $skipCloud = "${{ inputs.skip_cloud }}"
+        if ($skipCloud -ne "true") {
+          $skipCloud = "${{ vars.skip_cloud }}"
+        }
+        
+        # Determine local_output_dir
+        $localOutputDir = "${{ inputs.local_output_dir }}"
+        if (-not $localOutputDir) {
+          $localOutputDir = "./ci_output"
+        }
+        
+        # Ensure output directory exists
+        if (-not (Test-Path $localOutputDir)) {
+          New-Item -ItemType Directory -Force -Path $localOutputDir
+          Write-Host "Created local output directory: $localOutputDir"
+        }
 
         cd $Env:GITHUB_ACTION_PATH
         conda activate gha-comfyui-${{ inputs.python_version }}-${{ inputs.torch_version }}
         Write-Host "Running workflows: ${{ inputs.workflow_filenames }}"
+        Write-Host "Skip cloud operations: $skipCloud"
+        Write-Host "Local output directory: $localOutputDir"
+        
         python action.py `
           --comfy-workflow-names "${{ inputs.workflow_filenames }}" `
           --github-action-workflow-name "${{ github.workflow }}" `
@@ -512,11 +551,17 @@ runs:
           --commit-message $message `
           --branch-name $branch_name `
           --api-endpoint "${{ inputs.api_endpoint }}" `
-          --skip-cloud "${{ inputs.skip_cloud }}" `
-          --local-output-dir "${{ inputs.local_output_dir }}" `
-          --local-comfyui-path "${{ inputs.local_comfyui_path }}"
-        (Get-ChildItem -Force -Path "${{ github.workspace }}/output").FullName
-        cat "${{ github.workspace }}/application.log"
+          --skip-cloud "$skipCloud" `
+          --local-output-dir "$localOutputDir" `
+          --local-comfyui-path "${{ inputs.local_comfyui_path || '.' }}"
+        
+        # Display outputs
+        if (Test-Path "${{ github.workspace }}/output") {
+          (Get-ChildItem -Force -Path "${{ github.workspace }}/output").FullName
+        }
+        if (Test-Path "${{ github.workspace }}/application.log") {
+          cat "${{ github.workspace }}/application.log"
+        }
 
     - name: '[Win] Copy outputs to local directory'
       if: ${{ inputs.os == 'windows' && inputs.skip_cloud == 'true' && ( success() || failure() ) }}
