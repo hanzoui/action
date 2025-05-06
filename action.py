@@ -4,9 +4,6 @@ from google.cloud import storage
 
 REQUEST_TIMEOUT = 60 * 5
 
-SKIP_CLOUD_OPERATIONS = os.environ.get("SKIP_CLOUD_OPERATIONS", "false").lower() == "true"
-LOCAL_COMFYUI_PATH = os.environ.get("LOCAL_COMFYUI_PATH", "")
-
 # Reference: https://github.com/Comfy-Org/registry-backend/blob/main/openapi.yml#L2031
 class WfRunStatus(Enum):
     Started = "WorkflowRunStatusStarted"
@@ -122,10 +119,6 @@ def is_completed(status_response, prompt_id):
 
 
 def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name: str):
-    if SKIP_CLOUD_OPERATIONS:
-        print(f"[LOCAL MODE] Skipping upload of {source_file_name} to GCS bucket {bucket_name}")
-        return
-    
     print(f"Uploading file {source_file_name} to GCS bucket {bucket_name} as {destination_blob_name}")
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(bucket_name)
@@ -136,16 +129,6 @@ def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name
 
 
 def send_payload_to_api(args, output_files_gcs_paths, logs_gcs_path, workflow_name, start_time, end_time, vram_time_series, status=WfRunStatus.Completed, can_retry=True):
-    if SKIP_CLOUD_OPERATIONS:
-        print(f"[LOCAL MODE] Skipping API call for workflow {workflow_name}")
-        print("#### Payload that would be sent ####")
-        pprint.pprint({
-            "repo": args.repo,
-            "workflow_name": workflow_name,
-            "status": status.value,
-            # Add other key info here
-        })
-        return 200  # Return success code
 
     is_pr = args.branch_name.endswith("/merge")
     pr_number = None
@@ -285,10 +268,6 @@ def parse_raw_output(full_output):
 
 
 def main(args):
-    if LOCAL_COMFYUI_PATH and os.path.exists(LOCAL_COMFYUI_PATH):
-        print(f"[LOCAL MODE] Using ComfyUI repository at: {LOCAL_COMFYUI_PATH}")
-        args.workspace_path = LOCAL_COMFYUI_PATH
-    
     names = args.comfy_workflow_names
     if names == "auto":
         names = "sd15_default.json,sd15_lora.json,xl_default.json,xl_sketch_control.json,mixed_15_xl_addrefine.json"
@@ -315,11 +294,6 @@ def main(args):
         vram_thread.start()
 
         try:
-            workflow_path = file_path
-            if LOCAL_COMFYUI_PATH:
-                # Adjust to use local workflow path
-                workflow_path = os.path.join(LOCAL_COMFYUI_PATH, file_path)
-
             result = subprocess.run(
                 [
                     "comfy", "--skip-prompt", "--no-enable-telemetry",
