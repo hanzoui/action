@@ -1,13 +1,8 @@
-import argparse, datetime, json, os, sys, pprint, re, subprocess, requests, platform, psutil, traceback, threading, time, shutil
+import argparse, datetime, json, os, sys, pprint, re, subprocess, requests, platform, psutil, traceback, threading, time
 from enum import Enum
-from pathlib import Path
+from google.cloud import storage
 
-# Import google.cloud only if we're not in local mode
-SKIP_CLOUD = False
-
-def import_gcs():
-    from google.cloud import storage
-    return storage
+REQUEST_TIMEOUT = 60 * 5
 
 # Reference: https://github.com/Comfy-Org/registry-backend/blob/main/openapi.yml#L2031
 class WfRunStatus(Enum):
@@ -123,97 +118,17 @@ def is_completed(status_response, prompt_id):
     )
 
 
-def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name: str, args):
-    global SKIP_CLOUD
-    
-    if args.skip_cloud.lower() == "true":
-        print(f"[Local Mode] Skipping upload of {source_file_name} to GCS (skip_cloud=true)")
-        
-        # Copy file to local output directory instead
-        if args.local_output_dir:
-            local_path = os.path.join(args.local_output_dir, os.path.basename(source_file_name))
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            shutil.copy2(source_file_name, local_path)
-            print(f"[Local Mode] Copied {source_file_name} to {local_path}")
-        return
-    
-    try:
-        print(f"Uploading file {source_file_name} to GCS bucket {bucket_name} as {destination_blob_name}")
-        storage_client = import_gcs().Client()
-        bucket = storage_client.get_bucket(bucket_name)
+def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name: str):
+    print(f"Uploading file {source_file_name} to GCS bucket {bucket_name} as {destination_blob_name}")
+    storage_client = storage.Client()
+    bucket = storage_client.get_bucket(bucket_name)
 
-        blob = bucket.blob(destination_blob_name)
-        blob.upload_from_filename(source_file_name)
-        print(f"File {source_file_name} uploaded to {destination_blob_name}")
-    except Exception as e:
-        print(f"Error uploading to GCS: {e}")
-        traceback.print_exc()
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_filename(source_file_name)
+    print(f"File {source_file_name} uploaded to {destination_blob_name}")
 
 
 def send_payload_to_api(args, output_files_gcs_paths, logs_gcs_path, workflow_name, start_time, end_time, vram_time_series, status=WfRunStatus.Completed, can_retry=True):
-    global SKIP_CLOUD
-    
-    if args.skip_cloud.lower() == "true":
-        print(f"[Local Mode] Skipping API call for {workflow_name} (skip_cloud=true)")
-        
-        # Create a local results file instead
-        is_pr = args.branch_name.endswith("/merge")
-        pr_number = None
-        if is_pr:
-            pr_number = args.branch_name.split("/")[0]
-            
-        local_machine_stats = machine_stats.copy()
-        
-        available_ram = psutil.virtual_memory().available / (1024 ** 2)
-
-        local_machine_stats["vram_time_series"] = {f"{i / 2} seconds": vram_time_series[i] for i in range(len(vram_time_series))}
-        local_machine_stats["vram_time_series"]["total"] = f"{get_vramtotal()},{available_ram} MiB"
-        vram_only = [float(vram.split(",")[0].split(" ")[0]) for vram in vram_time_series]
-
-        avg_vram = 0
-        peak_vram = 0
-        if -1 in vram_only:
-            avg_vram = -1
-            peak_vram = -1
-        else:
-            avg_vram = sum(vram_only) / len(vram_only)
-            peak_vram = max(vram_only)
-            
-        # Generate local result file
-        local_payload = {
-            "workflow_name": workflow_name,
-            "status": status.value,
-            "skip_cloud": True,
-            "start_time": start_time,
-            "end_time": end_time,
-            "duration_seconds": end_time - start_time,
-            "output_files": [os.path.basename(f) for f in os.listdir(args.local_output_dir) if os.path.isfile(os.path.join(args.local_output_dir, f))],
-            "avg_vram_mb": int(avg_vram),
-            "peak_vram_mb": int(peak_vram),
-            "machine_stats": local_machine_stats,
-            "local_output_dir": args.local_output_dir
-        }
-        
-        # Save results to JSON file
-        results_file = os.path.join(args.local_output_dir, f"{workflow_name}_results.json")
-        with open(results_file, "w", encoding="utf-8") as f:
-            json.dump(local_payload, f, indent=2)
-            
-        print(f"[Local Mode] Saved results to {results_file}")
-        
-        # Print a summary
-        print("\n" + "="*80)
-        print(f"LOCAL CI RESULTS SUMMARY FOR: {workflow_name}")
-        print("="*80)
-        print(f"Status: {status.value}")
-        print(f"Duration: {end_time - start_time} seconds")
-        print(f"Average VRAM: {int(avg_vram)} MB")
-        print(f"Peak VRAM: {int(peak_vram)} MB")
-        print(f"Output directory: {args.local_output_dir}")
-        print(f"Output files: {len(local_payload['output_files'])}")
-        print("="*80 + "\n")
-        
-        return 200
 
     is_pr = args.branch_name.endswith("/merge")
     pr_number = None
@@ -353,17 +268,6 @@ def parse_raw_output(full_output):
 
 
 def main(args):
-    global SKIP_CLOUD
-    SKIP_CLOUD = args.skip_cloud.lower() == "true"
-    
-    # Create local output directory if in local mode
-    if SKIP_CLOUD:
-        if not args.local_output_dir:
-            args.local_output_dir = "./ci_output"
-        
-        os.makedirs(args.local_output_dir, exist_ok=True)
-        print(f"[Local Mode] Created output directory: {args.local_output_dir}")
-    
     names = args.comfy_workflow_names
     if names == "auto":
         names = "sd15_default.json,sd15_lora.json,xl_default.json,xl_sketch_control.json,mixed_15_xl_addrefine.json"
@@ -419,7 +323,7 @@ def main(args):
         except subprocess.CalledProcessError as e:
             stop_event.set()
             vram_thread.join()
-            send_payload_to_api(args, gs_path, logs_gcs_path, workflow_file_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
+            send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
             print("Error STD Out:", e.stdout)
             print("Error:", e.stderr)
             raise e
@@ -429,19 +333,10 @@ def main(args):
         print(f"Workflow {file_path} completed")
         end_time = int(datetime.datetime.now().timestamp())
 
-        # Copy output files to local output directory if in local mode
-        if SKIP_CLOUD:
-            for filename in output_filenames:
-                src_path = f"{args.workspace_path}/output/{filename}"
-                dst_path = os.path.join(args.local_output_dir, filename)
-                if os.path.exists(src_path):
-                    shutil.copy2(src_path, dst_path)
-                    print(f"[Local Mode] Copied {src_path} to {dst_path}")
-        else:
-            for filename in output_filenames:
-                upload_to_gcs(args.gsc_bucket_name, gs_path, f"{args.workspace_path}/output/{filename}", args)
+        for filename in output_filenames:
+            upload_to_gcs(args.gsc_bucket_name, gs_path, f"{args.workspace_path}/output/{filename}")
 
-        send_payload_to_api(args, gs_path, logs_gcs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
+        send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
         counter += 1
 
 
@@ -467,14 +362,6 @@ if __name__ == "__main__":
     parser.add_argument("--workspace-path", type=str, help="Workspace (ComfyUI repo) path, likely ${HOME}/action_runners/_work/ComfyUI/ComfyUI/.")
     parser.add_argument("--action-path", type=str, help="Action path., likely ${HOME}/action_runners/_work/comfy-action/.")
     parser.add_argument("--output-file-prefix", type=str, help="Output file prefix.")
-    # New arguments for local testing
-    parser.add_argument("--skip-cloud", type=str, default="false", help="Skip cloud operations (GCS uploads and API calls)")
-    parser.add_argument("--local-output-dir", type=str, default="./ci_output", help="Directory to save output files when skip_cloud is true")
-    parser.add_argument("--local-comfyui-path", type=str, default="", help="Path to a local ComfyUI repository")
-
-    # Added global timeout constant
-    global REQUEST_TIMEOUT
-    REQUEST_TIMEOUT = 60 * 5
 
     args = parser.parse_args()
     main(args)
