@@ -67,6 +67,17 @@ inputs:
 runs:
   using: "composite"
   steps:
+    #- name: '[Universal] Check for local_comfy environment variable'
+    #  id: check_local_comfy
+    #  shell: bash
+    #  run: |
+    #    if [ -n "${{ env.local_comfy }}" ]; then
+    #      echo "Using local ComfyUI installation at ${{ env.local_comfy }}"
+    #      echo "local_comfy=true" >> $GITHUB_OUTPUT
+    #    else
+    #      echo "local_comfy=false" >> $GITHUB_OUTPUT
+    #    fi
+
     - name: '[Universal] Checkout'
       uses: actions/checkout@v4
       if: ${{ steps.check_local_comfy.outputs.local_comfy != 'true' }}
@@ -478,7 +489,7 @@ runs:
           --commit-message $message `
           --branch-name $branch_name `
           --api-endpoint "${{ inputs.api_endpoint }}" `
-          --local-only "$env:local_only"
+          --local-only "${{ env.local_only }}" `
         (Get-ChildItem -Force -Path "${{ github.workspace }}/output").FullName
         cat "${{ github.workspace }}/application.log"
     # Note the Get-ChildItem mess is powershell for "ls -la" for debug
