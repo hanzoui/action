@@ -1,14 +1,6 @@
 import argparse, datetime, json, os, sys, pprint, re, subprocess, requests, platform, psutil, traceback, threading, time
 from enum import Enum
-from pathlib import Path
-
-# Conditionally import google.cloud.storage only if not in local mode
-def get_storage_client():
-    try:
-        from google.cloud import storage
-        return storage
-    except ImportError:
-        return None
+from google.cloud import storage
 
 REQUEST_TIMEOUT = 60 * 5
 
@@ -126,17 +118,8 @@ def is_completed(status_response, prompt_id):
     )
 
 
-def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name: str, local_mode: bool = False):
-    if local_mode:
-        print(f"[Local Mode] Skipping GCS upload for {source_file_name}")
-        return
-        
+def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name: str):
     print(f"Uploading file {source_file_name} to GCS bucket {bucket_name} as {destination_blob_name}")
-    storage = get_storage_client()
-    if not storage:
-        print("Google Cloud Storage module not available, skipping upload")
-        return
-        
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(bucket_name)
 
@@ -146,8 +129,7 @@ def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name
 
 
 def send_payload_to_api(args, output_files_gcs_paths, logs_gcs_path, workflow_name, start_time, end_time, vram_time_series, status=WfRunStatus.Completed, can_retry=True):
-    local_mode = args.local_mode.lower() == "true"
-    
+
     is_pr = args.branch_name.endswith("/merge")
     pr_number = None
     if is_pr:
@@ -201,19 +183,6 @@ def send_payload_to_api(args, output_files_gcs_paths, logs_gcs_path, workflow_na
         "status": status.value,
         "machine_stats": local_machine_stats
     }
-
-    # If in local mode, save the payload to a local file instead of sending
-    if local_mode:
-        # Ensure output directory exists
-        output_dir = Path(f"{args.workspace_path}/output")
-        output_dir.mkdir(exist_ok=True, parents=True)
-        
-        # Save payload to local file
-        local_report_path = output_dir / f"report_{workflow_name}_{status.name.lower()}.json"
-        with open(local_report_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
-        print(f"[Local Mode] Saved report to {local_report_path}")
-        return 200
 
     # Convert payload dictionary to a JSON string
     payload_json = json.dumps(payload)
@@ -299,10 +268,6 @@ def parse_raw_output(full_output):
 
 
 def main(args):
-    local_mode = args.local_mode.lower() == "true"
-    if local_mode:
-        print("Running in LOCAL MODE - GCS uploads and API calls will be skipped")
-    
     names = args.comfy_workflow_names
     if names == "auto":
         names = "sd15_default.json,sd15_lora.json,xl_default.json,xl_sketch_control.json,mixed_15_xl_addrefine.json"
@@ -316,12 +281,7 @@ def main(args):
     for workflow_file_name in workflow_files:
         gs_path = make_unix_safe(f"output-files/{args.github_action_workflow_name}-{args.os}-{args.python_version}-{args.cuda_version}-{args.torch_version}-{workflow_file_name}-run-{args.run_id}")
         logs_gs_path = make_unix_safe(f"logs/{args.job_id}-{args.os}-{args.python_version}-{args.cuda_version}-{args.torch_version}-{workflow_file_name}-run-{args.run_id}")
-        
-        # Skip API call in local mode
-        if not local_mode:
-            #send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, 0, 0, WfRunStatus.Started)
-            pass
-            
+        #send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, 0, 0, WfRunStatus.Started)
         file_path = f"workflows/{workflow_file_name}"
 
         print(f"Running workflow {file_path}")
@@ -363,7 +323,7 @@ def main(args):
         except subprocess.CalledProcessError as e:
             stop_event.set()
             vram_thread.join()
-            send_payload_to_api(args, gs_path, logs_gcs_path, workflow_file_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
+            send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
             print("Error STD Out:", e.stdout)
             print("Error:", e.stderr)
             raise e
@@ -373,15 +333,10 @@ def main(args):
         print(f"Workflow {file_path} completed")
         end_time = int(datetime.datetime.now().timestamp())
 
-        # Only upload to GCS if not in local mode
-        if not local_mode:
-            for filename in output_filenames:
-                upload_to_gcs(args.gsc_bucket_name, gs_path, f"{args.workspace_path}/output/{filename}")
-        else:
-            print(f"[Local Mode] Skipping GCS upload for {output_filenames}")
+        for filename in output_filenames:
+            upload_to_gcs(args.gsc_bucket_name, gs_path, f"{args.workspace_path}/output/{filename}")
 
-        # Always send/save the report
-        send_payload_to_api(args, gs_path, logs_gcs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
+        send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
         counter += 1
 
 
@@ -407,7 +362,6 @@ if __name__ == "__main__":
     parser.add_argument("--workspace-path", type=str, help="Workspace (ComfyUI repo) path, likely ${HOME}/action_runners/_work/ComfyUI/ComfyUI/.")
     parser.add_argument("--action-path", type=str, help="Action path., likely ${HOME}/action_runners/_work/comfy-action/.")
     parser.add_argument("--output-file-prefix", type=str, help="Output file prefix.")
-    parser.add_argument("--local-mode", type=str, default="false", help="When true, skips cloud uploads and API reporting for local testing")
 
     args = parser.parse_args()
     main(args)

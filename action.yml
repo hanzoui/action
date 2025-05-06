@@ -64,31 +64,13 @@ inputs:
     description: "Skip quickci."
     required: false
     default: "true"
-  # New parameters for local testing
-  local_mode:
-    description: "When true, skips cloud uploads and API reporting for local testing"
-    required: false
-    default: "false"
-  local_comfyui_path:
-    description: "Path to a local ComfyUI repository to use instead of cloning"
-    required: false
-    default: ""
 runs:
   using: "composite"
   steps:
     - name: '[Universal] Checkout'
       uses: actions/checkout@v4
-      if: ${{ inputs.local_comfyui_path == '' }}
       with:
         fetch-depth: 2
-
-    - name: '[Universal] Use local ComfyUI path'
-      if: ${{ inputs.local_comfyui_path != '' }}
-      shell: bash
-      run: |
-        echo "Using local ComfyUI path: ${{ inputs.local_comfyui_path }}"
-        mkdir -p ${{ github.workspace }}
-        cp -r ${{ inputs.local_comfyui_path }}/* ${{ github.workspace }}/
 
     ############################################################
     ##                      Mac/Linux Steps                   ##
@@ -113,7 +95,7 @@ runs:
     ############################################################
     - name: '[Unix] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os != 'windows' && inputs.local_mode != 'true' }}
+      if: ${{ inputs.os != 'windows' }}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
@@ -271,18 +253,17 @@ runs:
           --commit-time "$TIMESTAMP" \
           --commit-message "$MESSAGE" \
           --branch-name "$BRANCH_NAME" \
-          --api-endpoint "${{ inputs.api_endpoint }}" \
-          --local-mode "${{ inputs.local_mode }}"
+          --api-endpoint "${{ inputs.api_endpoint }}"
 
     - name: '[Unix] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os != 'windows' && inputs.local_mode != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() ) }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
 
     - name: '[Unix] Upload log file to GCS'
-      if: ${{ inputs.os != 'windows' && inputs.local_mode != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() ) }}
       id: unix_upload-log-files
       uses: google-github-actions/upload-cloud-storage@v2
       with:
@@ -327,7 +308,7 @@ runs:
 
     - name: '[Win] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os == 'windows' && inputs.local_mode != 'true' }}
+      if: ${{ inputs.os == 'windows' }}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
@@ -484,21 +465,20 @@ runs:
           --commit-time "$timestamp" `
           --commit-message $message `
           --branch-name $branch_name `
-          --api-endpoint "${{ inputs.api_endpoint }}" `
-          --local-mode "${{ inputs.local_mode }}"
+          --api-endpoint "${{ inputs.api_endpoint }}"
         (Get-ChildItem -Force -Path "${{ github.workspace }}/output").FullName
         cat "${{ github.workspace }}/application.log"
     # Note the Get-ChildItem mess is powershell for "ls -la" for debug
 
     - name: '[Win] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os == 'windows' && inputs.local_mode != 'true' && ( success() || failure() ) }}
+      if: ${{ inputs.os == 'windows' && ( success() || failure() ) }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
 
     - name: '[Win] Upload log file to GCS'
-      if: ${{ ( success() || failure() ) && inputs.os == 'windows' && inputs.local_mode != 'true' }}
+      if: ${{ ( success() || failure() ) && inputs.os == 'windows'}}
       id: win_upload-log-files
       uses: google-github-actions/upload-cloud-storage@v2
       with:
