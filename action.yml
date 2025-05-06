@@ -308,7 +308,7 @@ runs:
 
     - name: '[Win] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os == 'windows' && !vars.local_only}}
+      if: ${{ inputs.os == 'windows' && !env.local_only}}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
