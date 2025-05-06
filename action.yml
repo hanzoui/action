@@ -67,17 +67,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: '[Universal] Check for local_comfy environment variable'
-      id: check_local_comfy
-      shell: bash
-      run: |
-        if [ -n "${{ env.local_comfy }}" ]; then
-          echo "Using local ComfyUI installation at ${{ env.local_comfy }}"
-          echo "local_comfy=true" >> $GITHUB_OUTPUT
-        else
-          echo "local_comfy=false" >> $GITHUB_OUTPUT
-        fi
-
     - name: '[Universal] Checkout'
       uses: actions/checkout@v4
       if: ${{ steps.check_local_comfy.outputs.local_comfy != 'true' }}
