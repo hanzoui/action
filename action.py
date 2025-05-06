@@ -1,6 +1,9 @@
 import argparse, datetime, json, os, sys, pprint, re, subprocess, requests, platform, psutil, traceback, threading, time
 from enum import Enum
-from google.cloud import storage
+from pathlib import Path
+
+# Only import google.cloud if needed
+google_cloud_imported = False
 
 REQUEST_TIMEOUT = 60 * 5
 
@@ -118,8 +121,23 @@ def is_completed(status_response, prompt_id):
     )
 
 
-def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name: str):
+def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name: str, local_only=False):
+    if local_only:
+        print(f"Local only mode: Would have uploaded {source_file_name} to GCS bucket {bucket_name} as {destination_blob_name}")
+        return
+    
     print(f"Uploading file {source_file_name} to GCS bucket {bucket_name} as {destination_blob_name}")
+    
+    # Import here to avoid requiring google-cloud-storage when running locally
+    global google_cloud_imported
+    if not google_cloud_imported:
+        try:
+            from google.cloud import storage
+            google_cloud_imported = True
+        except ImportError:
+            print("Google Cloud Storage not installed, skipping upload")
+            return
+    
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(bucket_name)
 
@@ -128,7 +146,87 @@ def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name
     print(f"File {source_file_name} uploaded to {destination_blob_name}")
 
 
+def write_local_results(args, output_files_gcs_paths, logs_gcs_path, workflow_name, start_time, end_time, vram_time_series, status=WfRunStatus.Completed):
+    """Write results to a local JSON file instead of sending to API"""
+    
+    is_pr = args.branch_name.endswith("/merge")
+    pr_number = None
+    if is_pr:
+        pr_number = args.branch_name.split("/")[0]
+
+    local_machine_stats = machine_stats.copy()
+    available_ram = psutil.virtual_memory().available / (1024 ** 2)
+
+    local_machine_stats["vram_time_series"] = {f"{i / 2} seconds": vram_time_series[i] for i in range(len(vram_time_series))}
+    local_machine_stats["vram_time_series"]["total"] = f"{get_vramtotal()},{available_ram} MiB"
+    vram_only = [float(vram.split(",")[0].split(" ")[0]) for vram in vram_time_series]
+
+    avg_vram = 0
+    peak_vram = 0
+    if -1 in vram_only:
+        avg_vram = -1
+        peak_vram = -1
+    else:
+        avg_vram = sum(vram_only) / len(vram_only)
+        peak_vram = max(vram_only)
+
+    payload = {
+        "repo": args.repo,
+        "job_id": args.job_id,
+        "run_id": args.run_id,
+        "os": args.os,
+        "cuda_version": args.cuda_version,
+        "bucket_name": args.gsc_bucket_name,
+        "output_files_gcs_paths": output_files_gcs_paths,
+        "comfy_logs_gcs_path": logs_gcs_path,
+        "commit_hash": args.commit_hash,
+        "commit_time": args.commit_time,
+        "commit_message": args.commit_message,
+        "workflow_name": workflow_name,
+        "branch_name": args.branch_name,
+        "start_time": start_time,
+        "end_time": end_time,
+        "avg_vram": int(avg_vram),
+        "peak_vram": int(peak_vram),
+        "pr_number": pr_number,
+        "job_trigger_user": args.job_trigger_user,
+        "comfy_run_flags": args.comfy_run_flags,
+        "python_version": args.python_version,
+        "pytorch_version": args.torch_version,
+        "status": status.value,
+        "machine_stats": local_machine_stats,
+        "output_files": [os.path.basename(f) for f in output_files_gcs_paths.split("/") if f],
+        "local_only": True
+    }
+
+    # Create results directory if it doesn't exist
+    results_dir = Path(args.workspace_path) / "results"
+    results_dir.mkdir(exist_ok=True)
+    
+    # Write to results file with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_file = results_dir / f"results_{workflow_name}_{timestamp}.json"
+    
+    with open(result_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    
+    print(f"Results written to {result_file}")
+    
+    # Also write to the application log
+    log_file_path = Path(args.workspace_path) / "application.log"
+    with open(log_file_path, "a", encoding="utf-8") as log_file:
+        log_file.write("\n##### Local Results #####\n")
+        log_file.write(json.dumps(payload, indent=2))
+    
+    return result_file
+
+
 def send_payload_to_api(args, output_files_gcs_paths, logs_gcs_path, workflow_name, start_time, end_time, vram_time_series, status=WfRunStatus.Completed, can_retry=True):
+    # Check if we're in local-only mode
+    if args.local_only and args.local_only.lower() == "true":
+        result_file = write_local_results(args, output_files_gcs_paths, logs_gcs_path, workflow_name, start_time, end_time, vram_time_series, status)
+        print(f"Local only mode: Results written to {result_file}")
+        return 200
 
     is_pr = args.branch_name.endswith("/merge")
     pr_number = None
@@ -278,10 +376,19 @@ def main(args):
     print(f"Running workflows: {workflow_files}")
     counter = 1
 
+    # Create necessary directories
+    Path(args.workspace_path).joinpath("output").mkdir(exist_ok=True)
+    if args.local_only and args.local_only.lower() == "true":
+        Path(args.workspace_path).joinpath("results").mkdir(exist_ok=True)
+
     for workflow_file_name in workflow_files:
         gs_path = make_unix_safe(f"output-files/{args.github_action_workflow_name}-{args.os}-{args.python_version}-{args.cuda_version}-{args.torch_version}-{workflow_file_name}-run-{args.run_id}")
         logs_gs_path = make_unix_safe(f"logs/{args.job_id}-{args.os}-{args.python_version}-{args.cuda_version}-{args.torch_version}-{workflow_file_name}-run-{args.run_id}")
-        #send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, 0, 0, WfRunStatus.Started)
+        
+        # Skip API call if in local_only mode
+        if not (args.local_only and args.local_only.lower() == "true"):
+            pass #send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, 0, 0, WfRunStatus.Started)
+        
         file_path = f"workflows/{workflow_file_name}"
 
         print(f"Running workflow {file_path}")
@@ -323,7 +430,7 @@ def main(args):
         except subprocess.CalledProcessError as e:
             stop_event.set()
             vram_thread.join()
-            send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
+            send_payload_to_api(args, gs_path, logs_gcs_path, workflow_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
             print("Error STD Out:", e.stdout)
             print("Error:", e.stderr)
             raise e
@@ -333,10 +440,28 @@ def main(args):
         print(f"Workflow {file_path} completed")
         end_time = int(datetime.datetime.now().timestamp())
 
-        for filename in output_filenames:
-            upload_to_gcs(args.gsc_bucket_name, gs_path, f"{args.workspace_path}/output/{filename}")
+        # Copy output files to local directory if in local_only mode
+        local_output_dir = None
+        if args.local_only and args.local_only.lower() == "true":
+            local_output_dir = Path(args.workspace_path) / "results" / f"output_{workflow_file_name.replace('.json', '')}"
+            local_output_dir.mkdir(exist_ok=True)
+            for filename in output_filenames:
+                source_path = Path(args.workspace_path) / "output" / filename
+                target_path = local_output_dir / filename
+                try:
+                    # Copy the file
+                    import shutil
+                    shutil.copy2(source_path, target_path)
+                    print(f"Copied output file to {target_path}")
+                except Exception as e:
+                    print(f"Failed to copy output file {filename}: {e}")
 
-        send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
+        # Upload to GCS or write local results
+        for filename in output_filenames:
+            upload_to_gcs(args.gsc_bucket_name, gs_path, f"{args.workspace_path}/output/{filename}", 
+                          local_only=(args.local_only and args.local_only.lower() == "true"))
+
+        send_payload_to_api(args, gs_path, logs_gcs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
         counter += 1
 
 
@@ -362,6 +487,7 @@ if __name__ == "__main__":
     parser.add_argument("--workspace-path", type=str, help="Workspace (ComfyUI repo) path, likely ${HOME}/action_runners/_work/ComfyUI/ComfyUI/.")
     parser.add_argument("--action-path", type=str, help="Action path., likely ${HOME}/action_runners/_work/comfy-action/.")
     parser.add_argument("--output-file-prefix", type=str, help="Output file prefix.")
+    parser.add_argument("--local-only", type=str, help="If 'true', don't use GCS or API, write results locally instead.")
 
     args = parser.parse_args()
     main(args)

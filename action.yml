@@ -67,10 +67,30 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: '[Universal] Check for local_comfy environment variable'
+      id: check_local_comfy
+      shell: bash
+      run: |
+        if [ -n "${{ env.local_comfy }}" ]; then
+          echo "Using local ComfyUI installation at ${{ env.local_comfy }}"
+          echo "local_comfy=true" >> $GITHUB_OUTPUT
+        else
+          echo "local_comfy=false" >> $GITHUB_OUTPUT
+        fi
+
     - name: '[Universal] Checkout'
       uses: actions/checkout@v4
+      if: ${{ steps.check_local_comfy.outputs.local_comfy != 'true' }}
       with:
         fetch-depth: 2
+
+    - name: '[Universal] Setup local ComfyUI'
+      if: ${{ steps.check_local_comfy.outputs.local_comfy == 'true' }}
+      shell: bash
+      run: |
+        mkdir -p "$GITHUB_WORKSPACE"
+        rsync -av --exclude="venv" --exclude=".git" "${{ env.local_comfy }}/" "$GITHUB_WORKSPACE/"
+        echo "Using local ComfyUI from ${{ env.local_comfy }}"
 
     ############################################################
     ##                      Mac/Linux Steps                   ##
@@ -95,7 +115,7 @@ runs:
     ############################################################
     - name: '[Unix] Auth to GCS'
       uses: "google-github-actions/auth@v2"
-      if: ${{ inputs.os != 'windows' }}
+      if: ${{ inputs.os != 'windows' && !env.local_only }}
       with:
         credentials_json: "${{ inputs.google_credentials }}"
 
@@ -253,17 +273,18 @@ runs:
           --commit-time "$TIMESTAMP" \
           --commit-message "$MESSAGE" \
           --branch-name "$BRANCH_NAME" \
-          --api-endpoint "${{ inputs.api_endpoint }}"
+          --api-endpoint "${{ inputs.api_endpoint }}" \
+          --local-only "${{ env.local_only }}"
 
     - name: '[Unix] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os != 'windows' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() ) && !env.local_only }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
 
     - name: '[Unix] Upload log file to GCS'
-      if: ${{ inputs.os != 'windows' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() ) && !env.local_only }}
       id: unix_upload-log-files
       uses: google-github-actions/upload-cloud-storage@v2
       with:
@@ -362,7 +383,9 @@ runs:
         conda activate gha-comfyui-${{ inputs.python_version }}-${{ inputs.torch_version }}
         pip install -r requirements.txt
         pip install -U comfy-cli
-        conda install google-cloud-storage -y # This is because some fcking how, installing google-cloud-storage using pip has permission error on Windows using python 3.12
+        if (-not $env:local_only) {
+          conda install google-cloud-storage -y # This is because some fcking how, installing google-cloud-storage using pip has permission error on Windows using python 3.12
+        }
 
     - name: "[Win] Check conda environment"
       if: ${{ inputs.os == 'windows' }}
@@ -465,20 +488,21 @@ runs:
           --commit-time "$timestamp" `
           --commit-message $message `
           --branch-name $branch_name `
-          --api-endpoint "${{ inputs.api_endpoint }}"
+          --api-endpoint "${{ inputs.api_endpoint }}" `
+          --local-only "$env:local_only"
         (Get-ChildItem -Force -Path "${{ github.workspace }}/output").FullName
         cat "${{ github.workspace }}/application.log"
     # Note the Get-ChildItem mess is powershell for "ls -la" for debug
 
     - name: '[Win] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os == 'windows' && ( success() || failure() ) }}
+      if: ${{ inputs.os == 'windows' && ( success() || failure() ) && !env.local_only }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
 
     - name: '[Win] Upload log file to GCS'
-      if: ${{ ( success() || failure() ) && inputs.os == 'windows'}}
+      if: ${{ ( success() || failure() ) && inputs.os == 'windows' && !env.local_only }}
       id: win_upload-log-files
       uses: google-github-actions/upload-cloud-storage@v2
       with:
@@ -488,7 +512,7 @@ runs:
 
     - name: '[Win] Upload log file'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os == 'windows' && ( success() || failure() ) }}
+      if: ${{ inputs.os == 'windows' && ( success() || failure() ) && !env.local_only}}
       with:
         name: app-logs-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/application.log
