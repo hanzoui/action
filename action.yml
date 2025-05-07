@@ -488,8 +488,8 @@ runs:
           --commit-time "$timestamp" `
           --commit-message $message `
           --branch-name $branch_name `
-          --api-endpoint "${{ inputs.api_endpoint }}" `
           --local-only "${{ env.local_only }}" `
+          --api-endpoint "${{ inputs.api_endpoint }}"
         (Get-ChildItem -Force -Path "${{ github.workspace }}/output").FullName
         cat "${{ github.workspace }}/application.log"
     # Note the Get-ChildItem mess is powershell for "ls -la" for debug
