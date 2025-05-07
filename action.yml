@@ -300,7 +300,7 @@ runs:
         path: ${{ github.workspace }}/application.log
 
     - name: '[Unix] Cleanup output files only'
-      if: ${{ inputs.os != 'windows' && ( success() || failure() ) }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() ) && !env.local_only}}
       shell: bash -el {0}
       run: rm -rf ${{ github.workspace }}/*
 
@@ -518,6 +518,6 @@ runs:
         path: ${{ github.workspace }}/application.log
 
     - name: '[Win] Cleanup output files only'
-      if: ${{ inputs.os == 'windows' && ( success() || failure() ) }}
+      if: ${{ inputs.os == 'windows' && ( success() || failure() ) && !env.local_only}}
       shell: powershell
       run: Remove-Item -Path "${{ github.workspace }}/output/*" -Recurse -Force

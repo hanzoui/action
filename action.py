@@ -213,11 +213,12 @@ def write_local_results(args, output_files_gcs_paths, logs_gcs_path, workflow_na
     
     print(f"Results written to {result_file}")
     
+    #TODO figure out why this causes an error
     # Also write to the application log
-    log_file_path = Path(args.workspace_path) / "application.log"
-    with open(log_file_path, "a", encoding="utf-8") as log_file:
-        log_file.write("\n##### Local Results #####\n")
-        log_file.write(json.dumps(payload, indent=2))
+    #log_file_path = Path(args.workspace_path) / "application.log"
+    #with open(log_file_path, "a", encoding="utf-8") as log_file:
+    #    log_file.write("\n##### Local Results #####\n")
+    #    log_file.write(json.dumps(payload, indent=2))
     
     return result_file
 
