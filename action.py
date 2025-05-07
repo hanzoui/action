@@ -147,6 +147,7 @@ def upload_to_gcs(bucket_name: str, destination_blob_name: str, source_file_name
 
 
 def write_local_results(args, output_files_gcs_paths, logs_gcs_path, workflow_name, start_time, end_time, vram_time_series, status=WfRunStatus.Completed):
+    print("Attempting to write local results.")
     """Write results to a local JSON file instead of sending to API"""
     
     is_pr = args.branch_name.endswith("/merge")
@@ -386,8 +387,8 @@ def main(args):
         logs_gs_path = make_unix_safe(f"logs/{args.job_id}-{args.os}-{args.python_version}-{args.cuda_version}-{args.torch_version}-{workflow_file_name}-run-{args.run_id}")
         
         # Skip API call if in local_only mode
-        if not (args.local_only and args.local_only.lower() == "true"):
-            pass #send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, 0, 0, WfRunStatus.Started)
+        #if not (args.local_only and args.local_only.lower() == "true"):
+            #pass #send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, 0, 0, WfRunStatus.Started)
         
         file_path = f"workflows/{workflow_file_name}"
 
@@ -430,7 +431,7 @@ def main(args):
         except subprocess.CalledProcessError as e:
             stop_event.set()
             vram_thread.join()
-            send_payload_to_api(args, gs_path, logs_gcs_path, workflow_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
+            send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, int(datetime.datetime.now().timestamp()), vram_time_series, WfRunStatus.Failed)
             print("Error STD Out:", e.stdout)
             print("Error:", e.stderr)
             raise e
@@ -461,7 +462,7 @@ def main(args):
             upload_to_gcs(args.gsc_bucket_name, gs_path, f"{args.workspace_path}/output/{filename}", 
                           local_only=(args.local_only and args.local_only.lower() == "true"))
 
-        send_payload_to_api(args, gs_path, logs_gcs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
+        send_payload_to_api(args, gs_path, logs_gs_path, workflow_file_name, start_time, end_time, vram_time_series, WfRunStatus.Completed)
         counter += 1
 
 
