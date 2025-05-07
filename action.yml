@@ -278,7 +278,7 @@ runs:
 
     - name: '[Unix] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os != 'windows' && ( success() || failure() ) && !env.local_only }}
+      if: ${{ inputs.os != 'windows' && ( success() || failure() )}}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
@@ -496,7 +496,7 @@ runs:
 
     - name: '[Win] Upload Output Files'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os == 'windows' && ( success() || failure() ) && !env.local_only }}
+      if: ${{ inputs.os == 'windows' && ( success() || failure() ) }}
       with:
         name: output-files-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/output/**
@@ -512,7 +512,7 @@ runs:
 
     - name: '[Win] Upload log file'
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.os == 'windows' && ( success() || failure() ) && !env.local_only}}
+      if: ${{ inputs.os == 'windows' && ( success() || failure() )}}
       with:
         name: app-logs-${{ github.job }}-${{ inputs.os }}-${{ inputs.python_version }}-${{ inputs.cuda_version }}-${{ inputs.torch_version }}-${{ inputs.workflow_name }}-run${{ github.run_id }}
         path: ${{ github.workspace }}/application.log
