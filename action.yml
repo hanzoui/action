@@ -22,7 +22,7 @@ inputs:
     required: false
     default: ''
   models-json:
-    description: 'JSON string containing models and their download URLs. The models will be downloaded into the exact directory relative to /Hanzo Studio/models/. eg { "model_name": { url: "https://example.com/model.pth", "directory": "checkpoints" } }'
+    description: 'JSON string containing models and their download URLs. The models will be downloaded into the exact directory relative to /HanzoStudio/models/. eg { "model_name": { url: "https://example.com/model.pth", "directory": "checkpoints" } }'
     required: false
   workflow_filenames:
     description: "The list of workflow filenames is listed in the workflows/ directory. Separate by comma, e.g., 'workflow1.json,workflow2.json'."
