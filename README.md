@@ -1,10 +1,10 @@
 # comfy-action
 
-[![Verify GitHub Action YML](https://github.com/Comfy-Org/comfy-action/actions/workflows/verify-action.yml/badge.svg)](https://github.com/Comfy-Org/comfy-action/actions/workflows/verify-action.yml)
+[![Verify GitHub Action YML](https://github.com/hanzoui/action/actions/workflows/verify-action.yml/badge.svg)](https://github.com/hanzoui/action/actions/workflows/verify-action.yml)
 
-Sets up ComfyUI on Github Action Runner and execute a workflow json.
+Sets up Hanzo Studio on Github Action Runner and execute a workflow json.
 
-This is meant to be run in the ComfyUI repository.
+This is meant to be run in the Hanzo Studio repository.
 
 ### Set up your local self-hosted runner
 
@@ -32,8 +32,8 @@ python action.py \
   --commit-message="test message" \
   --branch-name="main" \
   --gsc-bucket-name="comfy-ci-results" \
-  --workspace-path=/Users/yoland/Code/ComfyUI \
-  --output-file-prefix="ComfyUI" \
+  --workspace-path=/Users/yoland/Code/Hanzo Studio \
+  --output-file-prefix="Hanzo Studio" \
   --api-endpoint="http://localhost:8080/upload-artifact" # Need you to spin up a local CI backend server to receive the artifact 
 ```
 - Create a temporary workflow json in Comfy repo to use your action branch e.g.
@@ -65,7 +65,7 @@ And you can get something like this to manually verify the steps are consistent
 ├───────────────────────────────────────┼──────────────────────────────────────┤
 │ [Unix] Download models                │ [Win] Download models                │
 ├───────────────────────────────────────┼──────────────────────────────────────┤
-│ [Unix] Run ComfyUI                    │ [Win] Run ComfyUI                    │
+│ [Unix] Run Hanzo Studio                    │ [Win] Run Hanzo Studio                    │
 ├───────────────────────────────────────┼──────────────────────────────────────┤
 │ [Unix] Check if the server is running │ [Win] Check if the server is running │
 ├───────────────────────────────────────┼──────────────────────────────────────┤
@@ -113,7 +113,7 @@ available for the step, then "uses" info)
 │ [Unix] Download models                │ [Win] Download models                  │
 │ bash -el {0}                          │ powershell                             │
 ├───────────────────────────────────────┼────────────────────────────────────────┤
-│ [Unix] Run ComfyUI                    │ [Win] Run ComfyUI                      │
+│ [Unix] Run Hanzo Studio                    │ [Win] Run Hanzo Studio                      │
 │ bash -el {0}                          │ powershell                             │
 ├───────────────────────────────────────┼────────────────────────────────────────┤
 │ [Unix] Check if the server is running │ [Win] Check if the server is running   │

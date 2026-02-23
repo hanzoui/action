@@ -4,7 +4,7 @@ from google.cloud import storage
 
 REQUEST_TIMEOUT = 60 * 5
 
-# Reference: https://github.com/Comfy-Org/registry-backend/blob/main/openapi.yml#L2031
+# Reference: https://github.com/hanzoui/registry-backend/blob/main/openapi.yml#L2031
 class WfRunStatus(Enum):
     Started = "WorkflowRunStatusStarted"
     Failed = "WorkflowRunStatusFailed"
@@ -71,7 +71,7 @@ def measure_vram(vram_time_series, stop_event):
             if stopped_for > 2:
                 break
 
-# https://github.com/Comfy-Org/registry-backend/blob/main/openapi.yml#L2037
+# https://github.com/hanzoui/registry-backend/blob/main/openapi.yml#L2037
 machine_stats = {
     "machine_name": platform.node(),
     "os_version": f"{platform.system()} {platform.release()}",
@@ -136,7 +136,7 @@ def send_payload_to_api(args, output_files_gcs_paths, logs_gcs_path, workflow_na
         pr_number = args.branch_name.split("/")[0]
 
     # Create the payload as a dictionary
-    # Should be mapping to https://github.com/Comfy-Org/registry-backend/blob/main/openapi.yml#L26
+    # Should be mapping to https://github.com/hanzoui/registry-backend/blob/main/openapi.yml#L26
 
     local_machine_stats = machine_stats.copy()
 
@@ -359,7 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("--commit-message", type=str, help="Commit message.")
     parser.add_argument("--branch-name", type=str, help="Branch name.")
     parser.add_argument("--gsc-bucket-name", type=str, help="Name of the GCS bucket to store the output files in.")
-    parser.add_argument("--workspace-path", type=str, help="Workspace (ComfyUI repo) path, likely ${HOME}/action_runners/_work/ComfyUI/ComfyUI/.")
+    parser.add_argument("--workspace-path", type=str, help="Workspace (Hanzo Studio repo) path, likely ${HOME}/action_runners/_work/Hanzo Studio/Hanzo Studio/.")
     parser.add_argument("--action-path", type=str, help="Action path., likely ${HOME}/action_runners/_work/comfy-action/.")
     parser.add_argument("--output-file-prefix", type=str, help="Output file prefix.")
 
