@@ -32,7 +32,7 @@ python action.py \
   --commit-message="test message" \
   --branch-name="main" \
   --gsc-bucket-name="comfy-ci-results" \
-  --workspace-path=/Users/yoland/Code/Hanzo Studio \
+  --workspace-path=/Users/yoland/Code/HanzoStudio \
   --output-file-prefix="Hanzo Studio" \
   --api-endpoint="http://localhost:8080/upload-artifact" # Need you to spin up a local CI backend server to receive the artifact 
 ```

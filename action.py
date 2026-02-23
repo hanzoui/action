@@ -359,7 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("--commit-message", type=str, help="Commit message.")
     parser.add_argument("--branch-name", type=str, help="Branch name.")
     parser.add_argument("--gsc-bucket-name", type=str, help="Name of the GCS bucket to store the output files in.")
-    parser.add_argument("--workspace-path", type=str, help="Workspace (Hanzo Studio repo) path, likely ${HOME}/action_runners/_work/Hanzo Studio/Hanzo Studio/.")
+    parser.add_argument("--workspace-path", type=str, help="Workspace (Hanzo Studio repo) path, likely ${HOME}/action_runners/_work/HanzoStudio/HanzoStudio/.")
     parser.add_argument("--action-path", type=str, help="Action path., likely ${HOME}/action_runners/_work/comfy-action/.")
     parser.add_argument("--output-file-prefix", type=str, help="Output file prefix.")
 
