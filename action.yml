@@ -55,7 +55,7 @@ inputs:
   output_prefix:
     description: "Prefix for the output files. Required if you want results uploaded to CI dashboard. https://ci.hanzo.ai"
     required: false
-    default: "Hanzo Studio"
+    default: "HanzoStudio"
   api_endpoint:
     description: "Comfy Org API endpoint"
     required: false
