@@ -1,5 +1,5 @@
 requests
-comfy-cli
+hanzo-cli
 google-cloud-storage
 charset-normalizer
 tqdm

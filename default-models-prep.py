@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 MODELS = {
     "checkpoints/v1-5-pruned-emaonly.safetensors": {
-        "url": "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/c36740b77a55ec396ace7c8c26589cdf2b4bc3da/v1-5-pruned-emaonly.safetensors",
+        "url": "https://huggingface.co/hanzoui/stable-diffusion-v1-5-archive/resolve/c36740b77a55ec396ace7c8c26589cdf2b4bc3da/v1-5-pruned-emaonly.safetensors",
         "hash": "6ce0161689b3853acaa03779ec93eafe75a02f4ced659bee03f50797806fa2fa"
     },
     "loras/epiNoiseoffset_v2.safetensors": {
@@ -37,7 +37,7 @@ MODELS = {
         "hash": "cc236278d28c8c3eccb8e21ee0a67ebed7dd6e9ce40aa9de914fa34e8282f191"
     },
     "checkpoints/flux1-schnell-fp8.safetensors": {
-        "url": "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/f2808ab17fe9ff81dcf89ed0301cf644c281be0a/flux1-schnell-fp8.safetensors",
+        "url": "https://huggingface.co/hanzoui/flux1-schnell/resolve/f2808ab17fe9ff81dcf89ed0301cf644c281be0a/flux1-schnell-fp8.safetensors",
         "hash": "ead426278b49030e9da5df862994f25ce94ab2ee4df38b556ddddb3db093bf72"
     }
 }
